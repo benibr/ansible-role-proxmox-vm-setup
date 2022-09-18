@@ -1,0 +1,22 @@
+# proxmox api
+proxmox_user: "root@pam"
+proxmox_api_host: "{{ physical_host }}"
+proxmox_api_token_id: "ansible"
+# proxmox_api_token_secret should come from ansible-vault
+admin_user: debian
+admin_user_password: ""
+
+proxmox_storagepool: storagepool01
+proxmox_system_storagepool: "{{ proxmox_storagepool }}"
+
+vm_search_domain: ""
+vm_mac_address: "{{ '52:54:00' | community.general.random_mac(seed=inventory_hostname) }}"
+vm_template: "debian11-cloudinit-template"
+vm_cores: 1
+vm_memory: 1024
+vm_disksize: 30G
+
+swap_file_path: /swapfile
+swap_file_size_mb: "{{ vm_memory }}"
+swap_swappiness: '60'
+swap_file_state: present

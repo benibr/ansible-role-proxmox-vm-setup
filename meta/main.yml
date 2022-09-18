@@ -1,0 +1,12 @@
+galaxy_info:
+  author: benibr
+  description: Ansible role to automatically create VM on a running proxmox server.
+  license: CC-BY-4.0
+  min_ansible_version: 2.1
+
+  galaxy_tags:
+    - vm
+    - proxmox
+    - cloud
+
+dependencies: []

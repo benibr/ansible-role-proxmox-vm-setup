@@ -1,0 +1,225 @@
+- name: Get VM current state
+  community.general.proxmox_kvm:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    name: "{{ inventory_hostname }}"
+    node: "{{ physical_host }}"
+    state: current
+    update: false
+  register: vm_state
+  changed_when: false
+  failed_when: false
+  delegate_to: localhost
+  tags:
+    - vm
+- name: Create VM if it doesn't exist
+  community.general.proxmox_kvm:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    full: true
+    name: "{{ inventory_hostname }}"
+    node: "{{ physical_host }}"
+    clone: "{{ physical_host }}-{{ vm_template }}"
+    timeout: 900
+  register: vm_create
+  delegate_to: localhost
+  when: vm_state["msg"] | regex_search("does not exist in cluster")
+  tags:
+    - vm
+- name: wait till VM is available under the new name
+  pause:
+    seconds: 10
+  when: vm_state["msg"] | regex_search("does not exist in cluster")
+  tags:
+    - vm
+- name: Get VM current state after creating
+  community.general.proxmox_kvm:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    name: "{{ inventory_hostname }}"
+    state: current
+  register: vm_state
+  changed_when: false
+  failed_when: false
+  delegate_to: localhost
+  tags:
+    - vm
+- name: Resize root disk
+  shell:
+    cmd: "qm resize {{ vm_state['vmid'] }} scsi0 {{ vm_disksize }} && sync"
+  delegate_to: "{{ physical_host }}"
+  when: vm_create.changed
+  tags:
+    - vm
+    - disks
+- name: Add additional disks
+  block:
+    - name: Create additional disks
+      community.general.lvol:
+        active: yes
+        vg: "{{ item.storagepool | default (proxmox_storagepool) }}"
+        lv: "vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
+        size: "{{ item.disksize }}"
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+    - name: Format additional disks
+      filesystem:
+        fstype: "{{ item.filesystem | default('ext4') }}"
+        dev: "/dev/{{ item.storagepool | default(proxmox_storagepool) }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
+        opts: "{{ item.mkfs_options | default('') }}"
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+    - name: add disk to VM
+      lineinfile:
+        path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+        regexp: '^scsi{{ item.id }}:.*$'
+        line: "scsi{{ item.id }}: {{ item.storagepool | default(proxmox_storagepool) }}:vm-{{ vm_state['vmid'] }}-disk-{{ item.id }},size={{ vm_disksize }}"
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+  when:
+    - vm_create.changed
+    - vm_additional_disks is defined
+  tags:
+    - vm
+    - disks
+- name: Gather data about additional disks
+  block:
+    - name: Fetch UUID
+      command: "blkid -s UUID -o value /dev/{{ item.storagepool | default(proxmox_storagepool) }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
+      changed_when: false
+      register: uuid
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+    - set_fact:
+        vm_additional_disks_uuid: "{{ vm_additional_disks_uuid | default([]) + [ item.item | combine({'uuid': item.stdout}) ] }}"
+      with_items: "{{ uuid.results }}"
+  when:
+    - vm_additional_disks is defined
+  tags:
+    - vm
+    - disks
+- name: Add basic VM config
+  community.general.proxmox_kvm:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    vmid: "{{ vm_state['vmid'] }}"
+    name: "{{ inventory_hostname }}"
+    node: "{{ physical_host }}"
+    cores: "{{ vm_cores }}"
+    memory: "{{ vm_memory }}"
+    searchdomains: "{{ vm_search_domain }}"
+    sshkeys: "{{ ssh_keys_admins }}"
+    ciuser: " {{ admin_user }}"
+    cipassword: " {{ admin_user_password }}"
+    node: "{{ physical_host }}"
+    onboot: "yes"
+    update: true
+  delegate_to: localhost
+  tags:
+    - vm
+- name: add serial to VM
+  lineinfile:
+    path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+    regexp: '^args:.*$'
+    line: "args: -serial unix:/var/run/qemu-server/{{ vm_state['vmid'] }}.serial,server,nowait"
+  delegate_to: "{{ physical_host }}"
+  tags:
+    - vm
+    - cloudinit
+- name: add cloudinit to VM 
+  lineinfile:
+    path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+    regexp: '^ide2:.*$'
+    line: "ide2: {{ proxmox_system_storagepool }}:vm-{{ vm_state['vmid'] }}-cloudinit"
+  delegate_to: "{{ physical_host }}"
+  when: vm_create.changed
+  tags:
+    - vm
+    - cloudinit
+- name: set bootorder of VM
+  lineinfile:
+    path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+    regexp: '^boot:.*$'
+    line: "boot: order=scsi0"
+  delegate_to: "{{ physical_host }}"
+  when: vm_create.changed
+  tags:
+    - vm
+- name: print VM mac address
+  debug:
+    msg: "VM MAC: {{ vm_mac_address }}"
+- name: "set macaddress for new VM"
+  # not possible via API https://github.com/ansible-collections/community.general/issues/1342
+  lineinfile:
+    path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+    regexp: '^net0:.*$'
+    line: 'net0: virtio={{ vm_mac_address }},bridge=vmbr0,firewall=1'
+  delegate_to: "{{ physical_host }}"
+  tags:
+    - vm
+    - network
+
+- name: start VM
+  community.general.proxmox_kvm:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    name: "{{ inventory_hostname }}"
+    state: started
+  register: vm_started
+  delegate_to: localhost
+  delay: 60
+  retries: 5
+  tags:
+    - vm
+- name: wait for VM to boot
+  wait_for_connection:
+    timeout: 600
+  when: vm_started.changed
+  tags:
+    - vm
+- name: gather facts of VM
+  gather_facts:
+  retries: 6
+  delay: 10
+- name: Use additional disks
+  block:
+    - name: create mountpoint
+      file:
+        path: "{{ item.mountpoint }}"
+        state: directory
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode | default('0755') }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+    - name: mount additinal data disk
+      mount:
+        path: "{{ item.mountpoint }}"
+        src: "UUID={{ item.uuid }}"
+        fstype: "{{ item.filesystem | default('ext4')}}"
+        opts: "{{ item.mount_options | default('defaults') }}"
+        state: mounted
+      with_items:
+        - "{{ vm_additional_disks_uuid }}"
+  when: vm_additional_disks is defined
+  tags:
+    - vm
+    - disks
+- name: activate swap
+  include_role:
+    name: ansible-role-swap
+  when: swap_file_state == "present"
