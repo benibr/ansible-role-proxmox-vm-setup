@@ -120,6 +120,7 @@
     cores: "{{ vm_cores }}"
     memory: "{{ vm_memory }}"
     searchdomains: "{{ vm_search_domain }}"
+    agent: "{{ vm_enable_guest_agent }}"
     sshkeys: "{{ ssh_keys_admins }}"
     ciuser: " {{ admin_user }}"
     cipassword: " {{ admin_user_password }}"
@@ -219,7 +220,16 @@
   tags:
     - vm
     - disks
+- name: install guest agent
+  package:
+    name: qemu-guest-agent
+  when: vm_enable_guest_agent == true
+  tags:
+    - guest-agent
+    - agent
 - name: activate swap
   include_role:
     name: ansible-role-swap
   when: swap_file_state == "present"
+  tags:
+    - swap

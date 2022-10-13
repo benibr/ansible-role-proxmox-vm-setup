@@ -15,7 +15,9 @@ vm_template: "debian11-cloudinit-template"
 vm_cores: 1
 vm_memory: 1024
 vm_disksize: 30G
+vm_enable_guest_agent: true
 
+# for role geerlingguy/ansible-role-swap
 swap_file_path: /swapfile
 swap_file_size_mb: "{{ vm_memory }}"
 swap_swappiness: '60'
