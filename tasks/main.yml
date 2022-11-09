@@ -116,7 +116,6 @@
     api_token_secret: "{{ proxmox_api_token_secret }}"
     vmid: "{{ vm_state['vmid'] }}"
     name: "{{ inventory_hostname }}"
-    node: "{{ physical_host }}"
     cores: "{{ vm_cores }}"
     memory: "{{ vm_memory }}"
     searchdomains: "{{ vm_search_domain }}"
@@ -223,6 +222,29 @@
 - name: install guest agent
   package:
     name: qemu-guest-agent
+  retries: 15
+  delay: 20
+  when: vm_enable_guest_agent == true
+  tags:
+    - guest-agent
+    - agent
+- name: activate guest agent service (multi-user.target)
+  file:
+    dest: /etc/systemd/system/multi-user.target.wants/qemu-guest-agent.service
+    src: /usr/lib/systemd/system/qemu-guest-agent.service
+    state: link
+  when:
+    - vm_enable_guest_agent == true
+    - ansible_distribution == 'Debian'
+  tags:
+    - guest-agent
+    - agent
+- name: activate guest agent service
+  systemd:
+    daemon-reload: yes
+    name: qemu-guest-agent
+    enabled: yes
+    state: started
   when: vm_enable_guest_agent == true
   tags:
     - guest-agent
