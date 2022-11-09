@@ -116,7 +116,6 @@
     api_token_secret: "{{ proxmox_api_token_secret }}"
     vmid: "{{ vm_state['vmid'] }}"
     name: "{{ inventory_hostname }}"
-    node: "{{ physical_host }}"
     cores: "{{ vm_cores }}"
     memory: "{{ vm_memory }}"
     searchdomains: "{{ vm_search_domain }}"
