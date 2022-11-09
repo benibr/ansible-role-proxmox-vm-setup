@@ -222,6 +222,8 @@
 - name: install guest agent
   package:
     name: qemu-guest-agent
+  retries: 15
+  delay: 20
   when: vm_enable_guest_agent == true
   tags:
     - guest-agent
