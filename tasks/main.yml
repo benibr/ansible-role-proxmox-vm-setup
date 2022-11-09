@@ -228,6 +228,27 @@
   tags:
     - guest-agent
     - agent
+- name: activate guest agent service (multi-user.target)
+  file:
+    dest: /etc/systemd/system/multi-user.target.wants/qemu-guest-agent.service
+    src: /usr/lib/systemd/system/qemu-guest-agent.service
+    state: link
+  when:
+    - vm_enable_guest_agent == true
+    - ansible_distribution == 'Debian'
+  tags:
+    - guest-agent
+    - agent
+- name: activate guest agent service
+  systemd:
+    daemon-reload: yes
+    name: qemu-guest-agent
+    enabled: yes
+    state: started
+  when: vm_enable_guest_agent == true
+  tags:
+    - guest-agent
+    - agent
 - name: activate swap
   include_role:
     name: ansible-role-swap
