@@ -1,3 +1,8 @@
+- name: "Read additional vars files {{ proxmox_include_vars_files }}"
+  include_vars: "{{ item }}"
+  ignore_errors: true
+  loop: "{{ proxmox_include_vars_files }}"
+  when: proxmox_include_vars_files is defined
 - name: Get VM current state
   community.general.proxmox_kvm:
     api_user: "{{ proxmox_user }}"
