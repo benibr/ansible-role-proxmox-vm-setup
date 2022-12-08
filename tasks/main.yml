@@ -37,7 +37,7 @@
     - vm
 - name: wait till VM is available under the new name
   pause:
-    seconds: 10
+    seconds: 5
   when: vm_state["msg"] | regex_search("does not exist in cluster")
   tags:
     - vm
