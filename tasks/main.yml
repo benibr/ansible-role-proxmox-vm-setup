@@ -35,6 +35,26 @@
   when: vm_state["msg"] | regex_search("does not exist in cluster")
   tags:
     - vm
+- name: Get info of "proxmox_storagepool"
+  # need to know the type of the storage
+  community.general.proxmox_storage_info:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    storage: "{{ proxmox_storagepool }}"
+  delegate_to: localhost
+  register: proxmox_storagepool_info
+- name: Get info of "proxmox_system_storagepool"
+  # need to know the type of the storage
+  community.general.proxmox_storage_info:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    storage: "{{ proxmox_storagepool }}"
+  delegate_to: localhost
+  register: proxmox_system_storagepool_info
 - name: wait till VM is available under the new name
   pause:
     seconds: 5
@@ -143,13 +163,23 @@
   tags:
     - vm
     - cloudinit
-- name: add cloudinit to VM 
+- name: add cloudinit to VM (LVM)
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
     regexp: '^ide2:.*$'
     line: "ide2: {{ proxmox_system_storagepool }}:vm-{{ vm_state['vmid'] }}-cloudinit"
+  when:
+    - proxmox_system_storagepool_info.proxmox_storages[0].type == "lvm2"
+    - vm_create.changed
+- name: add cloudinit to VM (Btrfs)
+  lineinfile:
+    path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+    regexp: '^ide2:.*$'
+    line: "ide2: {{ proxmox_system_storagepool }}:{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-cloudinit.qcow2"
+  when: 
+    - proxmox_system_storagepool_info.proxmox_storages[0].type == "btrfs"
+    - vm_create.changed
   delegate_to: "{{ physical_host }}"
-  when: vm_create.changed
   tags:
     - vm
     - cloudinit
