@@ -35,16 +35,6 @@
   when: vm_state["msg"] | regex_search("does not exist in cluster")
   tags:
     - vm
-- name: Get info of "proxmox_storagepool"
-  # need to know the type of the storage
-  community.general.proxmox_storage_info:
-    api_user: "{{ proxmox_user }}"
-    api_host: "{{ proxmox_api_host }}"
-    api_token_id: "{{ proxmox_api_token_id }}"
-    api_token_secret: "{{ proxmox_api_token_secret }}"
-    storage: "{{ proxmox_storagepool }}"
-  delegate_to: localhost
-  register: proxmox_storagepool_info
 - name: Get info of "proxmox_system_storagepool"
   # need to know the type of the storage
   community.general.proxmox_storage_info:
@@ -57,8 +47,8 @@
   register: proxmox_system_storagepool_info
 - name: wait till VM is available under the new name
   pause:
-    seconds: 5
-  when: vm_state["msg"] | regex_search("does not exist in cluster")
+    seconds: 10
+  when: vm_create.changed
   tags:
     - vm
 - name: Get VM current state after creating
@@ -83,18 +73,36 @@
   tags:
     - vm
     - disks
+- name: Get storage types
+  community.general.proxmox_storage_info:
+    api_user: "{{ proxmox_user }}"
+    api_host: "{{ proxmox_api_host }}"
+    api_token_id: "{{ proxmox_api_token_id }}"
+    api_token_secret: "{{ proxmox_api_token_secret }}"
+    storage: "{{ item.storagepool | default (proxmox_storagepool) }}"
+  delegate_to: localhost
+  register: all_storages
+  loop:
+    - "{{ vm_additional_disks }}"
+- name: create new list of additional disks with storage types
+  set_fact:
+    vm_additional_disks_storagetypes: "{{ vm_additional_disks_storagetypes | default([]) + [ item.item | combine({'storagetype': item.proxmox_storages[0].type}) ] }}"
+  with_items: "{{ all_storages.results }}"
+- set_fact:
+    vm_additional_disks: "{{ vm_additional_disks_storagetypes }}"
 - name: Add additional disks
   block:
-    - name: Create additional disks
-      community.general.lvol:
-        active: yes
-        vg: "{{ item.storagepool | default (proxmox_storagepool) }}"
-        lv: "vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
-        size: "{{ item.disksize }}"
+    - name: Create additional disks (on LVM storage)
+      # this is a workaround because the proxmox-disk-module does not
+      # allow to specify the filename nor does it report it
+      shell:
+        cmd: "pvesm alloc {{ item.storagepool | default (proxmox_storagepool) }} {{ vm_state['vmid'] }} vm-{{ vm_state['vmid'] }}-disk-{{ item.id }} {{ item.disksize }}"
       delegate_to: "{{ physical_host }}"
       with_items:
         - "{{ vm_additional_disks }}"
-    - name: Format additional disks
+      when:
+        - item.storagetype == "lvm"
+    - name: Format additional disks (on LVM storage)
       filesystem:
         fstype: "{{ item.filesystem | default('ext4') }}"
         dev: "/dev/{{ item.storagepool | default(proxmox_storagepool) }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
@@ -102,7 +110,30 @@
       delegate_to: "{{ physical_host }}"
       with_items:
         - "{{ vm_additional_disks }}"
-    - name: add disk to VM
+      when:
+        - item.storagetype == "lvm"
+    - name: Create additional disks (on Btrfs storage)
+      # this is a workaround because the proxmox-disk-module does not
+      # allow to specify the filename nor does it report it
+      shell:
+        cmd: "pvesm alloc {{ item.storagepool | default (proxmox_storagepool) }} {{ vm_state['vmid'] }} vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}.raw {{ item.disksize }}"
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+      when:
+        - item.storagetype == "btrfs"
+    - name: Format additional disks (on Btrfs storage)
+      filesystem:
+        fstype: "{{ item.filesystem | default('ext4') }}"
+        # fixme: use item.path
+        dev: "{{ proxmox_system_storagepool_info.proxmox_storages[0].path }}/images/{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}/disk.raw"
+        opts: "{{ item.mkfs_options | default('') }}"
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+      when:
+        - item.storagetype == "btrfs"
+    - name: add disk to VM (from LVM storages)
       lineinfile:
         path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
         regexp: '^scsi{{ item.id }}:.*$'
@@ -110,6 +141,18 @@
       delegate_to: "{{ physical_host }}"
       with_items:
         - "{{ vm_additional_disks }}"
+      when:
+        - item.storagetype == "lvm"
+    - name: add disk to VM (from btrfs storages)
+      lineinfile:
+        path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
+        regexp: '^scsi{{ item.id }}:.*$'
+        line: "scsi{{ item.id }}: {{ item.storagepool | default(proxmox_storagepool) }}:{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}.raw,size={{ vm_disksize }}"
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+      when:
+        - item.storagetype == "btrfs"
   when:
     - vm_create.changed
     - vm_additional_disks is defined
@@ -118,16 +161,38 @@
     - disks
 - name: Gather data about additional disks
   block:
-    - name: Fetch UUID
+    - name: Fetch UUID (LVM storages)
       command: "blkid -s UUID -o value /dev/{{ item.storagepool | default(proxmox_storagepool) }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
-      changed_when: false
-      register: uuid
+      register: lvm_uuids
       delegate_to: "{{ physical_host }}"
       with_items:
         - "{{ vm_additional_disks }}"
-    - set_fact:
+      when:
+        - item.storagetype == "lvm"
+    - name: append to list of additional disks with uuids
+      set_fact:
         vm_additional_disks_uuid: "{{ vm_additional_disks_uuid | default([]) + [ item.item | combine({'uuid': item.stdout}) ] }}"
-      with_items: "{{ uuid.results }}"
+      loop:
+        "{{ lvm_uuids.results }}"
+      when: lvm_uuids.changed
+    - name: Fetch UUID (Btrfs storages)
+      command: "blkid -s UUID -o value {{ all_storages.results[0].proxmox_storages[0].path }}/images/{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}/disk.raw"
+      register: btrfs_uuids
+      delegate_to: "{{ physical_host }}"
+      with_items:
+        - "{{ vm_additional_disks }}"
+      when:
+        - item.storagetype == "btrfs"
+    - name: create new list of additional disks with uuids
+      set_fact:
+        vm_additional_disks_uuid: "{{ vm_additional_disks_uuid | default([]) + [ item.item | combine({'uuid': item.stdout}) ] }}"
+      loop:
+        "{{ btrfs_uuids.results }}"
+      when: btrfs_uuids.changed == true
+    - name: create new list of additional disks with uuids
+      set_fact:
+        vm_additional_disks: "{{ vm_additional_disks_uuid }}"
+      when: (lvm_uuids.changed == true) or (btrfs_uuids.changed == true)
   when:
     - vm_additional_disks is defined
   tags:
@@ -168,8 +233,9 @@
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
     regexp: '^ide2:.*$'
     line: "ide2: {{ proxmox_system_storagepool }}:vm-{{ vm_state['vmid'] }}-cloudinit"
+  delegate_to: "{{ physical_host }}"
   when:
-    - proxmox_system_storagepool_info.proxmox_storages[0].type == "lvm2"
+    - proxmox_system_storagepool_info.proxmox_storages[0].type == "lvm"
     - vm_create.changed
 - name: add cloudinit to VM (Btrfs)
   lineinfile:
@@ -249,7 +315,7 @@
         opts: "{{ item.mount_options | default('defaults') }}"
         state: mounted
       with_items:
-        - "{{ vm_additional_disks_uuid }}"
+        - "{{ vm_additional_disks }}"
   when: vm_additional_disks is defined
   tags:
     - vm
