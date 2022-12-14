@@ -84,12 +84,15 @@
   register: all_storages
   loop:
     - "{{ vm_additional_disks }}"
+  when: vm_additional_disks is defined
 - name: create new list of additional disks with storage types
   set_fact:
     vm_additional_disks_storagetypes: "{{ vm_additional_disks_storagetypes | default([]) + [ item.item | combine({'storagetype': item.proxmox_storages[0].type}) ] }}"
   with_items: "{{ all_storages.results }}"
+  when: vm_additional_disks is defined
 - set_fact:
     vm_additional_disks: "{{ vm_additional_disks_storagetypes }}"
+  when: vm_additional_disks is defined
 - name: Add additional disks
   block:
     - name: Create additional disks (on LVM storage)
@@ -161,11 +164,11 @@
     - disks
 - name: Gather data about additional disks
   block:
-    - name: Fetch UUID (LVM storages)
+    - name: Fetch UUIDs (LVM storages)
       command: "blkid -s UUID -o value /dev/{{ item.storagepool | default(proxmox_storagepool) }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
       register: lvm_uuids
       delegate_to: "{{ physical_host }}"
-      with_items:
+      loop:
         - "{{ vm_additional_disks }}"
       when:
         - item.storagetype == "lvm"
@@ -175,7 +178,7 @@
       loop:
         "{{ lvm_uuids.results }}"
       when: lvm_uuids.changed
-    - name: Fetch UUID (Btrfs storages)
+    - name: Fetch UUIDs (Btrfs storages)
       command: "blkid -s UUID -o value {{ all_storages.results[0].proxmox_storages[0].path }}/images/{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}/disk.raw"
       register: btrfs_uuids
       delegate_to: "{{ physical_host }}"
