@@ -162,13 +162,15 @@
   tags:
     - vm
     - disks
+- debug:
+    var: vm_additional_disks
 - name: Gather data about additional disks
   block:
     - name: Fetch UUIDs (LVM storages)
       command: "blkid -s UUID -o value /dev/{{ item.storagepool | default(proxmox_storagepool) }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}"
       register: lvm_uuids
       delegate_to: "{{ physical_host }}"
-      loop:
+      with_items:
         - "{{ vm_additional_disks }}"
       when:
         - item.storagetype == "lvm"
