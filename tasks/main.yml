@@ -219,6 +219,7 @@
     ciuser: " {{ admin_user }}"
     cipassword: " {{ admin_user_password }}"
     node: "{{ physical_host }}"
+    ipconfig: "{{ vm_ipconfig }}"
     onboot: "yes"
     update: true
   delegate_to: localhost
@@ -242,6 +243,9 @@
   when:
     - proxmox_system_storagepool_info.proxmox_storages[0].type == "lvm"
     - vm_create.changed
+  tags:
+    - cloudinit
+    - vm
 - name: add cloudinit to VM (Btrfs)
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
@@ -334,6 +338,7 @@
   tags:
     - guest-agent
     - agent
+    - vm
 - name: activate guest agent service (multi-user.target)
   file:
     dest: /etc/systemd/system/multi-user.target.wants/qemu-guest-agent.service
