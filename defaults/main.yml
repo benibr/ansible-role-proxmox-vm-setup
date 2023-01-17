@@ -16,6 +16,7 @@ vm_cores: 1
 vm_memory: 1024
 vm_disksize: 30G
 vm_enable_guest_agent: true
+vm_network_bridge: vmbr0
 
 # for role geerlingguy/ansible-role-swap
 swap_file_path: /swapfile

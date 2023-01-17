@@ -271,7 +271,7 @@
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
     regexp: '^net0:.*$'
-    line: 'net0: virtio={{ vm_mac_address }},bridge=vmbr0,firewall=1'
+    line: 'net0: virtio={{ vm_mac_address }},bridge={{ vm_network_bridge }},firewall=1'
   delegate_to: "{{ physical_host }}"
   tags:
     - vm
