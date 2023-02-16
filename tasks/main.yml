@@ -30,6 +30,7 @@
     node: "{{ physical_host }}"
     clone: "{{ physical_host }}-{{ vm_template }}"
     timeout: 900
+    storage: "{{ proxmox_system_storagepool }}"
   register: vm_create
   delegate_to: localhost
   when: vm_state["msg"] | regex_search("does not exist in cluster")
