@@ -4,7 +4,7 @@
   loop: "{{ proxmox_include_vars_files }}"
   when: proxmox_include_vars_files is defined
 - name: Get VM current state
-  community.general.proxmox_kvm:
+  community.proxmox.proxmox_kvm:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
@@ -20,7 +20,7 @@
   tags:
     - vm
 - name: Create VM if it doesn't exist
-  community.general.proxmox_kvm:
+  community.proxmox.proxmox_kvm:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
@@ -38,7 +38,7 @@
     - vm
 - name: Get info of "proxmox_system_storagepool"
   # need to know the type of the storage
-  community.general.proxmox_storage_info:
+  community.proxmox.proxmox_storage_info:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
@@ -53,7 +53,7 @@
   tags:
     - vm
 - name: Get VM current state after creating
-  community.general.proxmox_kvm:
+  community.proxmox.proxmox_kvm:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
@@ -75,7 +75,7 @@
     - vm
     - disks
 - name: Get storage types
-  community.general.proxmox_storage_info:
+  community.proxmox.proxmox_storage_info:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
@@ -205,7 +205,7 @@
     - vm
     - disks
 - name: Add basic VM config
-  community.general.proxmox_kvm:
+  community.proxmox.proxmox_kvm:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
@@ -272,7 +272,7 @@
   debug:
     msg: "VM MAC: {{ vm_mac_address }}"
 - name: "set macaddress for new VM"
-  # not possible via API https://github.com/ansible-collections/community.general/issues/1342
+  # not possible via API https://github.com/ansible-collections/community.proxmox/issues/1342
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
     regexp: '^net0:.*$'
@@ -283,7 +283,7 @@
     - network
 
 - name: start VM
-  community.general.proxmox_kvm:
+  community.proxmox.proxmox_kvm:
     api_user: "{{ proxmox_user }}"
     api_host: "{{ proxmox_api_host }}"
     api_token_id: "{{ proxmox_api_token_id }}"
