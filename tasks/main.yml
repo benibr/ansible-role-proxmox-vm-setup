@@ -33,7 +33,7 @@
     storage: "{{ proxmox_system_storagepool }}"
   register: vm_create
   delegate_to: localhost
-  when: vm_state["msg"] | regex_search("does not exist in cluster")
+  when: vm_state["msg"] is search("does not exist in cluster")
   tags:
     - vm
 - name: Get info of "proxmox_system_storagepool"
