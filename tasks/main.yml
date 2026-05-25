@@ -361,7 +361,7 @@
     - agent
 - name: activate swap
   include_role:
-    name: ansible-role-swap
+    name: geerlingguy.swap
   when: swap_file_state == "present"
   tags:
     - swap
