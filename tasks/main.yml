@@ -140,7 +140,7 @@
     - name: add disk to VM (from LVM storages)
       lineinfile:
         path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-        regexp: '^scsi{{ item.id }}:.*$'
+        regexp: "^scsi{{ item.id }}:.*$"
         line: "scsi{{ item.id }}: {{ item.storagepool | default(proxmox_storagepool) }}:vm-{{ vm_state['vmid'] }}-disk-{{ item.id }},size={{ vm_disksize }}"
       delegate_to: "{{ physical_host }}"
       with_items:
@@ -150,7 +150,7 @@
     - name: add disk to VM (from btrfs storages)
       lineinfile:
         path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-        regexp: '^scsi{{ item.id }}:.*$'
+        regexp: "^scsi{{ item.id }}:.*$"
         line: "scsi{{ item.id }}: {{ item.storagepool | default(proxmox_storagepool) }}:{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}.raw,size={{ vm_disksize }}"
       delegate_to: "{{ physical_host }}"
       with_items:
@@ -178,8 +178,7 @@
     - name: append to list of additional disks with uuids
       set_fact:
         vm_additional_disks_uuid: "{{ vm_additional_disks_uuid | default([]) + [ item.item | combine({'uuid': item.stdout}) ] }}"
-      loop:
-        "{{ lvm_uuids.results }}"
+      loop: "{{ lvm_uuids.results }}"
       when: lvm_uuids.changed
     - name: Fetch UUIDs (Btrfs storages)
       command: "blkid -s UUID -o value {{ all_storages.results[0].proxmox_storages[0].path }}/images/{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-disk-{{ item.id }}/disk.raw"
@@ -192,8 +191,7 @@
     - name: create new list of additional disks with uuids
       set_fact:
         vm_additional_disks_uuid: "{{ vm_additional_disks_uuid | default([]) + [ item.item | combine({'uuid': item.stdout}) ] }}"
-      loop:
-        "{{ btrfs_uuids.results }}"
+      loop: "{{ btrfs_uuids.results }}"
       when: btrfs_uuids.changed == true
     - name: create new list of additional disks with uuids
       set_fact:
@@ -229,7 +227,7 @@
 - name: add serial to VM
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-    regexp: '^args:.*$'
+    regexp: "^args:.*$"
     line: "args: -serial unix:/var/run/qemu-server/{{ vm_state['vmid'] }}.serial,server,nowait"
   delegate_to: "{{ physical_host }}"
   tags:
@@ -238,7 +236,7 @@
 - name: add cloudinit to VM (LVM)
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-    regexp: '^ide2:.*$'
+    regexp: "^ide2:.*$"
     line: "ide2: {{ proxmox_system_storagepool }}:vm-{{ vm_state['vmid'] }}-cloudinit"
   delegate_to: "{{ physical_host }}"
   when:
@@ -250,9 +248,9 @@
 - name: add cloudinit to VM (Btrfs)
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-    regexp: '^ide2:.*$'
+    regexp: "^ide2:.*$"
     line: "ide2: {{ proxmox_system_storagepool }}:{{ vm_state['vmid'] }}/vm-{{ vm_state['vmid'] }}-cloudinit.qcow2"
-  when: 
+  when:
     - proxmox_system_storagepool_info.proxmox_storages[0].type == "btrfs"
     - vm_create.changed
   delegate_to: "{{ physical_host }}"
@@ -262,7 +260,7 @@
 - name: set bootorder of VM
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-    regexp: '^boot:.*$'
+    regexp: "^boot:.*$"
     line: "boot: order=scsi0"
   delegate_to: "{{ physical_host }}"
   when: vm_create.changed
@@ -275,8 +273,8 @@
   # not possible via API https://github.com/ansible-collections/community.proxmox/issues/1342
   lineinfile:
     path: "/etc/pve/qemu-server/{{ vm_state['vmid'] }}.conf"
-    regexp: '^net0:.*$'
-    line: 'net0: virtio={{ vm_mac_address }},bridge={{ vm_network_bridge }},firewall=1'
+    regexp: "^net0:.*$"
+    line: "net0: virtio={{ vm_mac_address }},bridge={{ vm_network_bridge }},firewall=1"
   delegate_to: "{{ physical_host }}"
   tags:
     - vm
